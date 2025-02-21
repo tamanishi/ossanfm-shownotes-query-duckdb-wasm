@@ -6,7 +6,9 @@
     "strict": true,
     "skipLibCheck": true,
     "lib": [
-      "ESNext"
+      "ESNext",
+      "dom",
+      "dom.iterable"
     ],
     "types": [
       "@cloudflare/workers-types/2023-07-01",
