@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "ossanfm_shownotes_query_duckdb_wasm",
+      "name": "ossanfm_shownotes-query-duckdb-wasm",
       "dependencies": {
         "@duckdb/duckdb-wasm": "^1.29.0",
         "@types/luxon": "^3.4.2",

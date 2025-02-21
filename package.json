@@ -1,5 +1,5 @@
 {
-  "name": "ossanfm_shownotes_query_duckdb_wasm",
+  "name": "ossanfm_shownotes-query-duckdb-wasm",
   "type": "module",
   "scripts": {
     "dev": "vite",

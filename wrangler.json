@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ossanfm_shownotes_query_duckdb_wasm",
+  "name": "ossanfm-shownotes-query-duckdb-wasm",
   "compatibility_date": "2025-02-16",
   "pages_build_output_dir": "./dist",
   "compatibility_flags": [
