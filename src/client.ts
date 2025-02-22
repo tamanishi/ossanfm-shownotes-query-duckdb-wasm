@@ -2,26 +2,21 @@
 
 import { DateTime } from 'luxon'
 import * as duckdb from '@duckdb/duckdb-wasm'
-import duckdb_wasm from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url'
-import mvp_worker from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url'
-import duckdb_wasm_next from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url'
-import eh_worker from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url'
 
 const MANUAL_BUNDLES = {
     mvp: {
-        mainModule: duckdb_wasm,
-        mainWorker: mvp_worker,
-    },
-    eh: {
-        mainModule: duckdb_wasm_next,
-        mainWorker: eh_worker
-    },
+        mainModule: 'https://duckdb-assets.tamanishi.net/duckdb-eh.wasm',
+        mainWorker: 'https://duckdb-assets.tamanishi.net/duckdb-browser-eh.worker.js',
+    }
 }
 
 // DuckDB WASM
 let db: duckdb.AsyncDuckDB | null = null
 let conn: duckdb.AsyncDuckDBConnection | null = null
 let stmt: duckdb.AsyncPreparedStatement | null = null
+
+let cachedWorkerUrl: string | null = null;
+let cachedWasmUrl: string | null = null;
 
 // Query
 const query = `
@@ -36,9 +31,7 @@ const query = `
     FROM Episodes E
     JOIN Shownotes S ON E.id = S.episodeId
     WHERE S.title LIKE '%' || ? || '%'
-
     UNION ALL
-
     -- (2) Get records where only episodes contain the keyword (no matching shownotes)
     SELECT E.id AS e_id,
         E.title AS e_title,
@@ -56,7 +49,6 @@ const query = `
     )
     ORDER BY E.pubDate DESC;
 `
-
 // Type definition
 type Shownote = {
     title: string | null,
@@ -70,18 +62,60 @@ type Episode = {
     shownotes: Shownote[]
 }
 
+async function createWorker(url: string) {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const text = await response.text();
+        const blob = new Blob([text], {type: 'application/javascript'});
+        return new Worker(URL.createObjectURL(blob));
+    } catch (error) {
+        console.error('Worker creation failed:', error);
+        throw new Error('Failed to initialize Web Worker');
+    }
+}
+
+async function cacheFile(url: string, fileName: string): Promise<string> {
+    try {
+        const root = await navigator.storage.getDirectory();
+        try {
+            const fileHandle = await root.getFileHandle(fileName);
+            const file = await fileHandle.getFile();
+            return URL.createObjectURL(file);
+        } catch {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+            }
+            const blob = await response.blob();
+            const fileHandle = await root.getFileHandle(fileName, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            return URL.createObjectURL(blob);
+        }
+    } catch (error) {
+        console.error('Failed to cache file:', error);
+        return url;
+    }
+}
+
 export async function initDB() {
     if (typeof window === 'undefined') return
 
     const bundle = await duckdb.selectBundle(MANUAL_BUNDLES)
-    const worker = new Worker(bundle.mainWorker!)
+ 
+    cachedWorkerUrl = await cacheFile(bundle.mainWorker!, 'duckdb-worker.js')
+    cachedWasmUrl = await cacheFile(bundle.mainModule!, 'duckdb-wasm.wasm')
+
+    const worker = await createWorker(cachedWorkerUrl)
     const logger = new duckdb.ConsoleLogger()
     
     db = new duckdb.AsyncDuckDB(logger, worker)
-    await db.instantiate(bundle.mainModule, bundle.pthreadWorker)
-    
+    await db.instantiate(cachedWasmUrl)
+
     conn = await db.connect()
-    
+
     if (import.meta.env.PROD) {
         await conn.query(`
             CREATE TABLE Episodes AS SELECT * FROM read_parquet('https://raw.githubusercontent.com/tamanishi/check-ossanfm-feed/refs/heads/main/Episodes.parquet');
@@ -209,6 +243,12 @@ export async function cleanup() {
     if (stmt) await stmt.close()
     if (conn) await conn.close()
     if (db) await db.terminate()
+
+    if (cachedWorkerUrl) URL.revokeObjectURL(cachedWorkerUrl)
+    if (cachedWasmUrl) URL.revokeObjectURL(cachedWasmUrl)
+
+    cachedWorkerUrl = null
+    cachedWasmUrl = null
 }
 
 // Register functions globally
