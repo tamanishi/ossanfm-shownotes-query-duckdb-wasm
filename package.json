@@ -1,5 +1,5 @@
 {
-  "name": "ossanfm_shownotes-query-duckdb-wasm",
+  "name": "ossanfm-shownotes-query-duckdb-wasm",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,8 +10,8 @@
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.29.0",
     "@types/luxon": "^3.4.2",
-    "hono": "^4.7.1",
-    "luxon": "^3.4.4"
+    "hono": "^4.7.2",
+    "luxon": "^3.5.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241218.0",
