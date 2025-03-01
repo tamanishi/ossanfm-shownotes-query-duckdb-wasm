@@ -15,8 +15,8 @@ let db: duckdb.AsyncDuckDB | null = null
 let conn: duckdb.AsyncDuckDBConnection | null = null
 let stmt: duckdb.AsyncPreparedStatement | null = null
 
-let cachedWorkerUrl: string | null = null;
-let cachedWasmUrl: string | null = null;
+let cachedWorkerUrl: string | null = null
+let cachedWasmUrl: string | null = null
 
 // Query
 const query = `
@@ -47,7 +47,7 @@ const query = `
         WHERE S.episodeId = E.id
             AND S.title LIKE '%' || ? || '%'
     )
-    ORDER BY E.pubDate DESC;
+    ORDER BY E.pubDate DESC, S.id ASC;
 `
 // Type definition
 type Shownote = {
@@ -62,92 +62,62 @@ type Episode = {
     shownotes: Shownote[]
 }
 
+// Check if Safari for wasm file caching
 const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-console.log('isSafari ', isSafari)
 
 async function createWorker(url: string) {
     try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const text = await response.text();
-        const blob = new Blob([text], {type: 'application/javascript'});
-        // return new Worker(URL.createObjectURL(blob));
-        const worker = new Worker(URL.createObjectURL(blob));
-        console.log('Worker created successfully')
-        console.log('worker ', worker)
+        const response = await fetch(url)
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+        const text = await response.text()
+        const blob = new Blob([text], {type: 'application/javascript'})
+        const worker = new Worker(URL.createObjectURL(blob))
         return worker
     } catch (error) {
-        console.error('Worker creation failed:', error);
-        throw new Error('Failed to initialize Web Worker');
+        console.error('Worker creation failed:', error)
+        throw new Error('Failed to initialize Web Worker')
     }
 }
 
 async function cacheFile(url: string, fileName: string): Promise<string> {
     try {
-        console.log('Caching file from URL:', url, 'as', fileName)
-        const root = await navigator.storage.getDirectory();
+        const root = await navigator.storage.getDirectory()
         try {
-            if (isSafari) await root.removeEntry(fileName);
-            const fileHandle = await root.getFileHandle(fileName);
-            console.log('File handle obtained:', fileHandle)
-            const file = await fileHandle.getFile();
-            console.log('File obtained:', file)
-            const objectUrl = URL.createObjectURL(file);
-            console.log('Returning cached file URL:', objectUrl)
-            return objectUrl;
+            const fileHandle = await root.getFileHandle(fileName)
+            const file = await fileHandle.getFile()
+            const objectUrl = URL.createObjectURL(file)
+            return objectUrl
         } catch {
-            console.log('File does not exist, fetching from network')
-            const response = await fetch(url);
+            const response = await fetch(url)
             if (!response.ok) {
-                throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+                throw new Error(`Failed to fetch ${url}: ${response.statusText}`)
             }
-            const blob = await response.blob();
-            const fileHandle = await root.getFileHandle(fileName, { create: true });
+            const blob = await response.blob()
+            const fileHandle = await root.getFileHandle(fileName, { create: true })
             if (isSafari) {
-                console.log('Writing file in Safari')
-                const accessHandle = await fileHandle.createSyncAccessHandle()
-                await accessHandle.truncate(0)
-                await accessHandle.write(blob)
-                await accessHandle.close()
+                const worker = new Worker('/static/worker.js')
+                worker.postMessage({ fileName, blob })
+                worker.onmessage = function(event: MessageEvent) {
+                    if (!event.data.success) {
+                        console.error('Failed to write file in Safari:', event.data.error)
+                    }
+                }
             } else {
-                console.log('Writing file in non-Safari')
-                const writable = await fileHandle.createWritable();
-                await writable.write(blob);
-                await writable.close();
+                const writable = await fileHandle.createWritable()
+                await writable.write(blob)
+                await writable.close()
             }
-            const objectUrl = URL.createObjectURL(blob);
-            console.log('Returning new cached file URL:', objectUrl)
-            const cacheResponse = await fetch(objectUrl);
+            const objectUrl = URL.createObjectURL(blob)
+            const cacheResponse = await fetch(objectUrl)
             if (!cacheResponse.ok) {
-                throw new Error(`Failed to fetch WASM file: ${cacheResponse.statusText}`);
+                throw new Error(`Failed to fetch WASM file: ${cacheResponse.statusText}`)
             }
-            const wasmBlob = await cacheResponse.blob();
-            console.log('WASM file fetched successfully cacheFile:', wasmBlob);
-            return objectUrl;
+            return objectUrl
         }
     } catch (error) {
-        console.error('Failed to cache file:', error);
-        return url;
+        console.error('Failed to cache file:', error)
+        return url
     }
-}
-
-function withTimeout(promise: Promise<any>, timeout: number): Promise<any> {
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-            reject(new Error('Operation timed out'));
-        }, timeout);
-
-        promise.then(
-            (value) => {
-                clearTimeout(timer);
-                resolve(value);
-            },
-            (error) => {
-                clearTimeout(timer);
-                reject(error);
-            }
-        );
-    });
 }
 
 export async function initDB() {
@@ -156,34 +126,34 @@ export async function initDB() {
     try {
         const bundle = await duckdb.selectBundle(MANUAL_BUNDLES)
  
-        cachedWorkerUrl = await cacheFile(bundle.mainWorker!, 'duckdb-worker.js')
-        cachedWasmUrl = await cacheFile(bundle.mainModule!, 'duckdb-wasm.wasm')
+        const [workerUrl, wasmUrl] = await Promise.all([
+            cacheFile(bundle.mainWorker!, 'duckdb-worker.js'),
+            cacheFile(bundle.mainModule!, 'duckdb-wasm.wasm')
+        ])
+
+        cachedWorkerUrl = workerUrl
+        cachedWasmUrl = wasmUrl
 
         const worker = await createWorker(cachedWorkerUrl)
-        console.log('2')
         const logger = new duckdb.ConsoleLogger()
         
         db = new duckdb.AsyncDuckDB(logger, worker)
-        console.log('3')
 
         try {
-            console.log('cachedWasmUrl ', cachedWasmUrl)
-            console.log('Step 11: Instantiating DuckDB with URL:', cachedWasmUrl)
-            const response = await fetch(cachedWasmUrl);
+            const response = await fetch(cachedWasmUrl)
             if (!response.ok) {
-                throw new Error(`Failed to fetch WASM file: ${response.statusText}`);
+                throw new Error(`Failed to fetch WASM file: ${response.statusText}`)
             }
-            const wasmBlob = await response.blob();
-            console.log('WASM file fetched successfully initDB:', wasmBlob);
-            await withTimeout(db.instantiate(cachedWasmUrl), 10000); // 10秒のタイムアウトを設定
-            // await db.instantiate(cachedWasmUrl)
-            console.log('3.1')
+            const wasmBlob = await response.blob()
+
+            // Convert the blob to an ArrayBuffer
+            const arrayBuffer = await wasmBlob.arrayBuffer()
+            const wasmFile = new Blob([arrayBuffer], { type: 'application/wasm' })
+            const wasmUrl = URL.createObjectURL(wasmFile)
+            await db.instantiate(wasmUrl, bundle.pthreadWorker)
         } catch (error) {
-            console.log('3.5')
             console.error('Failed to instaintiate DuckDB:', error)
         }
-
-        console.log('4')
 
         conn = await db.connect()
 
@@ -205,7 +175,6 @@ export async function initDB() {
         // Show all records on initial load
         await search()
     } catch (error) {
-        console.log('5')
         console.error('Failed to initialize DB:', error)
     }
 }
@@ -351,6 +320,6 @@ if (typeof window !== 'undefined') {
 
 declare global {
     interface Window {
-        search: typeof search;
+        search: typeof search
     }
 }
