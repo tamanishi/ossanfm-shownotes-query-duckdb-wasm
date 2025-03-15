@@ -22,13 +22,17 @@ export default defineConfig(({ mode }) => {
               if (assetInfo.name?.endsWith('.css')) {
                 return 'static/style.css'
               }
+              if (assetInfo.name?.endsWith('.parquet')) {
+                return null
+              }
               return 'assets/[name][extname]'
             }
           },
         },
-      }
+      },
+      publicDir: false
     }
-  } else {
+  } else if (mode === 'development') {
     return {
       plugins: [
         tailwindcss(),
@@ -36,7 +40,16 @@ export default defineConfig(({ mode }) => {
         devServer({
           entry: 'src/index.tsx',
         })
-      ]
+      ],
+      publicDir: 'public'
+    }
+  } else if (mode === 'production') {
+    return {
+      plugins: [
+        tailwindcss(),
+        build(),
+      ],
+      publicDir: false
     }
   }
 })
