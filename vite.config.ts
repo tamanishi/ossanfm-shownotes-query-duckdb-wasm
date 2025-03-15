@@ -25,7 +25,6 @@ export default defineConfig(({ mode }) => {
               return 'assets/[name][extname]'
             }
           },
-          cssCodeSplit: false,
         },
       }
     }
