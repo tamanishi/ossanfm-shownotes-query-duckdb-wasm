@@ -1,11 +1,15 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ossanfm-shownotes-query-duckdb-wasm",
-  "compatibility_date": "2025-02-16",
-  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2025-02-14",
+  "assets": {
+    "directory": "./dist/"
+  },
+  "main": "./dist/index.js",
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "workers_dev": true,
   "r2_buckets": [
     {
       "binding": "DUCKDB_ASSETS",
