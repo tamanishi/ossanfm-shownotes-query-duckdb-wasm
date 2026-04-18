@@ -4,6 +4,10 @@ bun run dev
 ```
 
 ```sh
+bun run test
+```
+
+```sh
 bun run deploy
 ```
 
